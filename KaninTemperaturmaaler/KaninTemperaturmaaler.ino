@@ -2,30 +2,26 @@
 #include "DHT.h"
 #include <Arduino.h>
 #include <ESP8266WiFi.h>
-#include <ESP8266WiFiMulti.h>
-#include <ESP8266HTTPClient.h>
-
-// Connect pin 1 (on the left) of the sensor to +5V
-// NOTE: If using a board with 3.3V logic like an Arduino Due connect pin 1
-// to 3.3V instead of 5V!
-// Connect pin 2 of the sensor to whatever your DHTPIN is
-// Connect pin 4 (on the right) of the sensor to GROUND
-// Connect a 10K resistor from pin 2 (data) to pin 1 (power) of the sensor
-
+#include <PubSubClient.h>
 
 
 #define USE_SERIAL Serial
-#define DHTPIN D2     // what digital pin we're connected to
-#define DHTTYPE DHT11   // DHT 11
+#define DHTPIN D4     // what digital pin we're connected to
+#define DHTTYPE DHT22   // DHT 22
 
-ESP8266WiFiMulti WiFiMulti;
 // Initialize DHT sensor.
 DHT dht(DHTPIN, DHTTYPE, 15);
-int samples = 30;
-int sample_delay = 1000;
-int count = 0;
+int sample_delay = 2000;
 float temp = 0;
 float hum = 0;
+
+//Network config
+const char* ssid = "taletut";
+const char* password = "hesterbest";
+const char* mqtt_server = "trygvis.io";
+WiFiClient espClient;
+PubSubClient client(espClient);
+char msg[10];
 
 void setup() {
   Serial.begin(115200);
@@ -37,22 +33,64 @@ void setup() {
         Serial.flush();
         delay(1000);
     }
-
-    WiFiMulti.addAP("xxx", "xxx");
+  setup_wifi();
+  client.setServer(mqtt_server, 1883);
 
   dht.begin();
 }
 
+
+void setup_wifi() {
+  delay(10);
+  // We start by connecting to a WiFi network
+  Serial.println();
+  Serial.print("Connecting to ");
+  Serial.println(ssid);
+
+  WiFi.begin(ssid, password);
+
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+
+  Serial.println("");
+  Serial.println("WiFi connected");
+  Serial.println("IP address: ");
+  Serial.println(WiFi.localIP());
+}
+
+void reconnect() {
+  // Loop until we're reconnected
+  while (!client.connected()) {
+    Serial.print("Attempting MQTT connection...");
+    // Attempt to connect
+    if (client.connect("ESP8266Client")) {
+      Serial.println("connected to mqtt");
+    } else {
+      Serial.print("failed, rc=");
+      Serial.print(client.state());
+      Serial.println(" try again in 5 seconds");
+      // Wait 5 seconds before retrying
+      delay(5000);
+    }
+  }
+}
+
 void loop() {
+
+   if (!client.connected()) {
+    reconnect();
+  }
+  client.loop();
+  
   // Wait a few seconds between measurements.
   delay(sample_delay);
      
 
-  // Reading temperature or humidity takes about 250 milliseconds!
-  // Sensor readings may also be up to 2 seconds 'old' (its a very slow sensor)
-  hum += dht.readHumidity();
+  hum = dht.readHumidity();
   // Read temperature as Celsius (the default)
-  temp += dht.readTemperature();
+  temp = dht.readTemperature();
 
   // Check if any reads failed and exit early (to try again).
   if (isnan(hum) || isnan(temp)) {
@@ -61,56 +99,24 @@ void loop() {
   }
   
 
-  count +=1;
-  Serial.print("Count: ");
-  Serial.print(count);
   Serial.print("Humidity: ");
-  Serial.print(hum/count);
+  Serial.print(hum);
   Serial.print(" %\t");
   Serial.print("Temperature: ");
-  Serial.print(temp/count);
+  Serial.print(temp);
   Serial.print(" *C ");
   Serial.print("\n");
 
+
+  String temp_string =  String(temp, 2);
+  temp_string.toCharArray(msg, 10); 
+  Serial.println(msg);
+  client.publish("vs11/kanin/temp", msg);
+
   
+  String hum_string =  String(hum, 2);
+  hum_string.toCharArray(msg, 10); 
+  Serial.println(msg);
+  client.publish("vs11/kanin/humidity", msg);
 
-  if(count == samples){
-  String temp_reading = "humidity=";
-  temp_reading += hum / samples;
-  temp_reading += "\ntemp=";
-  temp_reading += temp / samples;
-  temp_reading += "\n";
-  
-  
-
-   if((WiFiMulti.run() == WL_CONNECTED)) {
-
-        HTTPClient http;
-        String filename = "temp_reading_";
-        filename += millis();
-        filename += ".txt";
-        
-        http.begin("http://192.168.1.226:5005/webdav/"+filename); //HTTP
-        http.setAuthorization("webdav", "xxx");
-        Serial.print("[HTTP] PUT.."+filename+".\n");
-      
-        int httpCode = http.sendRequest("PUT", temp_reading);
-
-        // httpCode will be negative on error
-        if(httpCode > 0) {
-            // HTTP header has been send and Server response header has been handled
-            Serial.printf("[HTTP] PUT... code: %d\n", httpCode);
-        } else {
-            Serial.printf("[HTTP] PUT... failed, error: %s\n", http.errorToString(httpCode).c_str());
-        }
-
-        http.end();
-    }
-    
-    count = 0;
-    hum = 0;
-    temp = 0;
-   
-    
-        }
 }
