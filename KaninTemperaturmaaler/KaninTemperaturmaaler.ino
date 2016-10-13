@@ -17,7 +17,7 @@ float hum = 0;
 
 //Network config
 const char* ssid = "taletut";
-const char* password = "hesterbest";
+const char* password = "xxxxxx";
 const char* mqtt_server = "trygvis.io";
 WiFiClient espClient;
 PubSubClient client(espClient);
