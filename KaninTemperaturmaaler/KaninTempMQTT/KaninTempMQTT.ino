@@ -3,7 +3,7 @@
 
 
 const char* ssid = "taletut";
-const char* password = "hesterbest";
+const char* password = "xxxxx";
 const char* mqtt_server = "trygvis.io";
 
 WiFiClient espClient;
